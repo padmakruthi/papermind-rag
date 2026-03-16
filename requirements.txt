@@ -1,9 +1,9 @@
 streamlit
-langchain
+langchain==0.2.6
 langchain-community
 langchain-huggingface
 sentence-transformers
 transformers
 torch
 faiss-cpu
-pypd
+pypdf
