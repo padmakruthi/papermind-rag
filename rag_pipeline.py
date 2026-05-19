@@ -39,30 +39,25 @@ def build_rag_pipeline(pdf_path):
     # Vector DB
     vectorstore = FAISS.from_documents(docs, embeddings)
 
-    retriever = vectorstore.as_retriever(search_kwargs={"k": 4})
+    # Reduce k to 2 to prevent overflowing the 512 token limit of Flan-T5
+    retriever = vectorstore.as_retriever(search_kwargs={"k": 2})
 
     # Local LLM
     generator = pipeline(
         "text2text-generation",
-        model="google/flan-t5-small",
-        max_length=256,
+        model="google/flan-t5-base",
+        max_length=512,
         device=-1
     )
 
     llm = HuggingFacePipeline(pipeline=generator)
 
-    # Prompt Template
-    prompt_template = """
-Answer the question based only on the context below.
+    # Prompt Template optimized for Flan-T5
+    prompt_template = """Please answer the question based on the context.
+    
+Context: {context}
 
-Context:
-{context}
-
-Question:
-{question}
-
-Give a short clear answer.
-"""
+Question: {question}"""
 
     PROMPT = PromptTemplate(
         template=prompt_template,

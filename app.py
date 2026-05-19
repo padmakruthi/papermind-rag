@@ -51,6 +51,9 @@ if "qa_chain" not in st.session_state:
 if "paper_name" not in st.session_state:
     st.session_state.paper_name = None
 
+if "messages" not in st.session_state:
+    st.session_state.messages = []
+
 # ── Layout ──────────────────────────────────────────────
 col1, col2 = st.columns([1,2])
 
@@ -84,6 +87,7 @@ with col1:
 
                     st.session_state.qa_chain = build_rag_pipeline(pdf_path)
                     st.session_state.paper_name = uploaded_file.name
+                    st.session_state.messages = [] # Clear previous chat messages
 
                     os.unlink(pdf_path)
 
@@ -99,50 +103,55 @@ with col1:
 # ── RIGHT PANEL ─────────────────────────────────────────
 with col2:
 
-    st.markdown("### Ask Questions About the Paper")
+    st.markdown("### Chat with Paper")
 
-    question = st.text_area(
-        "Enter your question",
-        height=120,
-        placeholder="Example:\nWhat is the methodology?\nWhat are the main contributions?\nWhat dataset was used?"
-    )
+    # Display chat messages
+    chat_container = st.container(height=500)
+    with chat_container:
+        for msg in st.session_state.messages:
+            with st.chat_message(msg["role"]):
+                st.markdown(msg["content"])
+                if "sources" in msg and msg["sources"]:
+                    with st.expander("View Sources"):
+                        for doc in msg["sources"]:
+                            st.markdown(f'<div class="source-box">{doc}</div>', unsafe_allow_html=True)
 
-    if st.button("🔍 Generate Answer"):
+    # Chat input
+    if question := st.chat_input("Ask a question about the paper..."):
 
         if st.session_state.qa_chain is None:
-            st.warning("Upload and process a paper first.")
-
-        elif question.strip() == "":
-            st.warning("Enter a question.")
+            st.error("Upload and process a paper first.")
 
         else:
+            # Append user message
+            st.session_state.messages.append({"role": "user", "content": question})
 
-            with st.spinner("Searching paper and generating answer..."):
+            with chat_container:
+                with st.chat_message("user"):
+                    st.markdown(question)
 
-                try:
+                with st.chat_message("assistant"):
+                    with st.spinner("Searching paper and generating answer..."):
+                        try:
+                            result = ask_question(st.session_state.qa_chain, question)
+                            answer = result["answer"]
 
-                    result = ask_question(
-                        st.session_state.qa_chain,
-                        question
-                    )
+                            sources = []
+                            for doc in result["source_documents"]:
+                                page = doc.metadata.get("page", "Unknown")
+                                snippet = doc.page_content[:350].replace("\n", " ")
+                                sources.append(f"**Page {page}**: {snippet}...")
 
-                    st.markdown("### Answer")
+                            st.markdown(answer)
+                            with st.expander("View Sources"):
+                                for doc in sources:
+                                    st.markdown(f'<div class="source-box">{doc}</div>', unsafe_allow_html=True)
 
-                    st.markdown(
-                        f'<div class="answer-box">{result["answer"]}</div>',
-                        unsafe_allow_html=True
-                    )
+                            st.session_state.messages.append({
+                                "role": "assistant",
+                                "content": answer,
+                                "sources": sources
+                            })
 
-                    st.markdown("### Sources")
-
-                    for doc in result["source_documents"]:
-
-                        snippet = doc.page_content[:350].replace("\n"," ")
-
-                        st.markdown(
-                            f'<div class="source-box">{snippet}...</div>',
-                            unsafe_allow_html=True
-                        )
-
-                except Exception as e:
-                    st.error(f"Error generating answer: {e}")
+                        except Exception as e:
+                            st.error(f"Error generating answer: {e}")
